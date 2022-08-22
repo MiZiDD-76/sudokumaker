@@ -31,15 +31,60 @@ def is_solved():
             return False
     return True
     
+def make_move(tile:Sudokutile, value):
+    """Resolves a single field "tile" to "value"."""
+    tile.resolve(value)
+    constrain_others(tile)
+    print(f"resolved {tile.col+1}/{tile.row+1} to {value}")
+
+def format_tiles(tiles):
+    """returns a readable string for a list of tiles."""
+    return ", ".join(map(lambda x: f"{x.col+1}/{x.row+1}",tiles))
+
 def make_iteration():
-    unresolved = [x for x in G.sudoku if not x.is_resolved()]
-    if is_solved(): return
-    min_entropy = min(unresolved, key=lambda x:x.get_entropy()).get_entropy()
-    candidates = [x for x in G.sudoku if x.get_entropy() == min_entropy]
-    tile_to_change = choice(candidates)
-    value = choice(list(tile_to_change.constraints))
-    tile_to_change.resolve(value)
-    constrain_others(tile_to_change)    
+    """Make single solution step."""
+    # 1. if solved, do nothing
+    if is_solved():
+        return
+    # 2. if unique spots exist, resolve them
+    uniques = [x for x in G.sudoku if len(x.constraints) == 1]
+    if len(uniques):
+        # Pick any, might as well choose the first in the list, 
+        # next iteration will pick up the next
+        # it's constraints will have exactly 1 element, so pop() it
+        make_move(uniques[0],uniques[0].constraints.pop())
+        return
+    # 3. so no fully constrained tile was found... be more clever now
+    #    Algo:
+    #    iterate through all *groups*
+    #      find all tiles which are a) not resolved
+    #      for all numbers 1...9 
+    #        skip if number is alread in that group
+    #        find all potential candiates in that group, which have number is their constraints set
+    #        if only one element in result set, resolve that tile and return
+    for group in range(9):
+        group_tiles = [x for x in G.sudoku if x.group == group]
+        group_values = [x.value for x in group_tiles]
+        unresolved = set([x for x in group_tiles if not x.is_resolved()])
+        blocked = set()
+        for v in range(1,10):
+            if v in group_values: continue
+            candidates = {x for x in unresolved if v in x.constraints}
+            print(f"for value {v} in group {group} found these candidates: {format_tiles(candidates)}")
+            if len(candidates)==1:
+                # So for value "v" we have only one candidate left, resolve it it v and return.
+                # we have made a move so return to mainloop
+                make_move(candidates.pop(),v)
+                return
+    # Now what?!
+    # Pick a random move from the tiles with the lowest entropy?
+    min_entropy = min([x.get_entropy() for x in G.sudoku])
+    moves = [(t,v) for t in G.sudoku for v in t.constraints]
+    t,v = choice(moves)
+    # We might get stuck later on... but that's life if the sudoku has no unique solution
+    make_move(t,v)
+    return
+    raise RuntimeError("make_iteration didn't know how to continue")
 
 def draw_sudoku():
     for t in G.sudoku:
@@ -54,6 +99,7 @@ def setcaption(paused):
         pygame.display.set_caption(f"Sudoku solver (paused - press space to continue)")
     else:
         pygame.display.set_caption(f"Sudoku solver (press space to pause)")
+
 
 
 def mainloop():
@@ -78,12 +124,13 @@ def mainloop():
         if not paused:
             if is_stuck():
                 initialize_sudoku()
-            if not is_solved():
-                make_iteration()
-            else:  
+            elif  is_solved():
                 pause=True
                 pygame.display.set_caption("Sudou solver - solved (press R to restart)")
+            else:  
+                make_iteration()
             draw_sudoku()
+            #paused=True
 
 
 def initialize_sudoku():
